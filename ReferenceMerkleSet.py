@@ -37,15 +37,15 @@ INVALID = TERMINAL | MIDDLE
 
 BLANK = bytes([0] * 32)
 
-def flip_terminal(mystr):
+def set_terminal(mystr):
     assert len(mystr) == 32
     return bytes([TERMINAL | (mystr[0] & 0x3F)]) + mystr[1:]
 
-def flip_middle(mystr):
+def set_middle(mystr):
     assert len(mystr) == 32
     return bytes([MIDDLE | (mystr[0] & 0x3F)]) + mystr[1:]
 
-def flip_invalid(mystr):
+def set_invalid(mystr):
     assert len(mystr) == 32
     return bytes([INVALID | (mystr[0] & 0x3F)]) + mystr[1:]
 
@@ -68,13 +68,13 @@ class ReferenceMerkleSet:
         return self.root.hash
 
     def add_already_hashed(self, toadd):
-        self.root = self.root.add(flip_terminal(toadd), 0)
+        self.root = self.root.add(set_terminal(toadd), 0)
 
     def remove_already_hashed(self, toremove):
-        self.root = self.root.remove(flip_terminal(toremove), 0)
+        self.root = self.root.remove(set_terminal(toremove), 0)
 
     def is_included_already_hashed(self, tocheck):
-        tocheck = flip_terminal(tocheck)
+        tocheck = set_terminal(tocheck)
         p = []
         r = self.root.is_included(tocheck, 0, p)
         return r, b''.join(p)
@@ -83,7 +83,7 @@ class ReferenceMerkleSet:
         newhashes = []
         self.root.audit(newhashes, [])
         assert newhashes == sorted(newhashes)
-        assert newhashes == sorted([flip_terminal(x) for x in hashes])
+        assert newhashes == sorted([set_terminal(x) for x in hashes])
 
 class EmptyNode:
     def __init__(self):
@@ -228,7 +228,7 @@ class MiddleNode:
 
     def other_included(self, tocheck, depth, p, collapse):
         if collapse or not self.is_double():
-            p.append(flip_invalid(self.hash))
+            p.append(set_invalid(self.hash))
         else:
             self.is_included(tocheck, depth, p)
 
@@ -253,7 +253,7 @@ class UnknownNode:
         raise SetError()
 
     def other_included(self, tocheck, depth, p, collapse):
-        p.append(flip_invalid(self.hash))
+        p.append(set_invalid(self.hash))
 
 class SetError(BaseException):
     pass
@@ -298,7 +298,7 @@ def _deserialize(proof, pos, bits):
     if t == TERMINAL:
         return TerminalNode(proof[pos:pos + 32], bits), pos + 32
     if t == INVALID:
-        return UnknownNode(flip_middle(proof[pos:pos + 32])), pos + 32
+        return UnknownNode(set_middle(proof[pos:pos + 32])), pos + 32
     if proof[pos] != MIDDLE:
         raise SetError()
     v0, pos = _deserialize(proof, pos + 1, bits + [0])
