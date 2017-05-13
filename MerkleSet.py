@@ -109,7 +109,7 @@ class safearray(bytearray):
             assert index >= 0
             assert index < len(self)
         bytearray.__setitem__(self, index, thing)
-
+        
 class MerkleSet:
     # depth sets the size of branches, it's power of two scale with a smallest value of 0
     # leaf_units is the size of leaves, its smallest possible value is 1
@@ -272,7 +272,7 @@ class MerkleSet:
     # In C this should be malloc/new
     def _allocate_branch(self):
         b = safearray(8 + self.subblock_lengths[-1])
-        self.pointers_to_arrays[self._addrof(b)] = b
+        self.pointers_to_arrays[self._addrof(b, False)] = b
         return b
 
     # In C this should be malloc/new
@@ -281,7 +281,7 @@ class MerkleSet:
         for i in range(self.leaf_units):
             p = 4 + i * 68
             leaf[p:p + 2] = to_bytes((i + 1) if i != self.leaf_units - 1 else 0xFFFF, 2)
-        self.pointers_to_arrays[self._addrof(leaf)] = leaf
+        self.pointers_to_arrays[self._addrof(leaf, False)] = leaf
         return leaf
 
     # In C this should be calloc/free
@@ -296,8 +296,9 @@ class MerkleSet:
         return self.pointers_to_arrays[bytes(ref)]
 
     # In C this should be &
-    def _addrof(self, thing):
+    def _addrof(self, thing, check=True):
         assert thing is not None
+        assert not check or any(x == thing for x in self.pointers_to_arrays.values())
         return to_bytes(id(thing), 8)
 
     def get_root(self):
@@ -906,9 +907,9 @@ class MerkleSet:
         if result == ONELEFT:
             numin = from_bytes(block[2:4])
             if numin == 1:
-                self._deallocate(block)
                 if branch[:8] == self._addrof(block):
                     branch[:8] = bytes(8)
+                self._deallocate(block)
             else:
                 block[2:4] = to_bytes(numin - 1, 2)
         return result, val
@@ -1110,9 +1111,9 @@ class MerkleSet:
         if r != None:
             inputs = from_bytes(leaf[2:4])
             if inputs == 1:
-                self._deallocate(leaf)
                 if branch[:8] == self._addrof(leaf):
                     branch[:8] = bytes(8)
+                self._deallocate(leaf)
                 return r
             leaf[2:4] = to_bytes(inputs - 1, 2)
         return r
