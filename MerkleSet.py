@@ -125,9 +125,6 @@ class MerkleSet:
         self.pointers_to_arrays = {}
         self.rootblock = None
 
-        # Support C style address modelling
-        self._brk = 0x100000
-
     # Only used by test code, makes sure internal state is consistent
     def audit(self, hashes):
         newhashes = []
