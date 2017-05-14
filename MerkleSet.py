@@ -118,6 +118,9 @@ class Node:
         self.data = data
         self.pos = pos
 
+    def get_offset(self):
+        return self.pos
+
     def make_unused(self,nextent):
         self.data[self.pos:self.pos + 2] = to_bytes(nextent,2)
         self.data[self.pos + 2:self.pos + 68] = bytes(66)
@@ -154,12 +157,19 @@ class Node:
             v += 1
         self.data[offset:offset+SHORTSIZE] = to_bytes(v, 2)
 
+    def get_type(self,n):
+        return get_type(self.data, self.pos + (n * 32))
+
 class Leaf(safearray):
     def get_next_ptr(self):
         return from_bytes(self[:2])
 
     def set_next_ptr(self,ptr):
         self[:2] = to_bytes(ptr, 2)
+
+    def get_node(self,pos):
+        assert pos >= 0 and (4 + 68 * (pos + 1)) <= len(self)
+        return Node(self, 4 + 68 * pos)
         
 class MerkleSet:
     # depth sets the size of branches, it's power of two scale with a smallest value of 0
@@ -249,19 +259,18 @@ class MerkleSet:
             self._audit_branch_inner(branch, pos + 64 + self.subblock_lengths[moddepth - 1], depth + 1, moddepth - 1, outputs, allblocks, e, hashes, t0 != EMPTY)
 
     def _add_hashes_leaf(self, leaf, pos, hashes, can_terminate):
-        assert pos >= 0
-        rpos = 4 + pos * 68
-        t0 = get_type(leaf, rpos)
-        t1 = get_type(leaf, rpos + 32)
+        node = leaf.get_node(pos)
+        t0 = node.get_type(0)
+        t1 = node.get_type(1)
         if t0 == TERMINAL:
-            hashes.append(leaf[rpos:rpos + 32])
+            hashes.append(node.get_hash(0))
             assert can_terminate or t1 != TERMINAL
         elif t0 != EMPTY:
-            self._add_hashes_leaf(leaf, from_bytes(leaf[rpos + 64:rpos + 66]) - 1, hashes, t1 != EMPTY)
+            self._add_hashes_leaf(leaf, node.get_pos(0), hashes, t1 != EMPTY)
         if t1 == TERMINAL:
-            hashes.append(leaf[rpos + 32:rpos + 64])
+            hashes.append(node.get_hash(1))
         elif t1 != EMPTY:
-            self._add_hashes_leaf(leaf, from_bytes(leaf[rpos + 66:rpos + 68]) - 1, hashes, t0 != EMPTY)
+            self._add_hashes_leaf(leaf, node.get_pos(1), hashes, t0 != EMPTY)
 
     def _audit_branch_inner_empty(self, branch, pos, moddepth):
         if moddepth == 0:
