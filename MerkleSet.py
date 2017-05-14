@@ -158,7 +158,12 @@ class Node:
         self.data[offset:offset+SHORTSIZE] = to_bytes(v, 2)
 
     def get_type(self,n):
-        return get_type(self.data, self.pos + (n * 32))
+        offset = self.hash_loc(n)
+        return get_type(self.data, offset)
+    
+    def make_invalid(self,n):
+        offset = self.hash_loc(n)
+        return make_invalid(self.data, offset)
 
 class Leaf(safearray):
     def get_next_ptr(self):
@@ -175,7 +180,7 @@ class Leaf(safearray):
         return from_bytes(self[2:4])
 
     def set_inputs(self,i):
-        self[2:4] = to_bytes(i, 2)
+        self[2:4] = to_bytes(i, 2)        
         
 class MerkleSet:
     # depth sets the size of branches, it's power of two scale with a smallest value of 0
@@ -588,10 +593,9 @@ class MerkleSet:
     # returns INVALIDATING, DONE, FULL
     def _add_to_leaf_inner(self, toadd, leaf, pos, depth):
         assert pos >= 0
-        rpos = pos * 68 + 4
-        node = Node(leaf, rpos)
+        node = leaf.get_node(pos)
         if get_bit(toadd, depth) == 0:
-            t = get_type(leaf, rpos)
+            t = node.get_type(0)
             if t == EMPTY:
                 node.set_hash(0, toadd)
                 return INVALIDATING
@@ -599,7 +603,7 @@ class MerkleSet:
                 oldval0 = node.get_hash(0)
                 if oldval0 == toadd:
                     return DONE
-                t1 = get_type(leaf, rpos + 32)
+                t1 = node.get_type(1)
                 if t1 == TERMINAL:
                     oldval1 = node.get_hash(1)
                     if toadd == oldval1:
@@ -619,20 +623,20 @@ class MerkleSet:
                 if r == FULL:
                     return FULL
                 node.set_pos(0, newpos)
-                make_invalid(leaf, rpos)
-                if get_type(leaf, rpos + 32) == INVALID:
+                node.make_invalid(0)
+                if node.get_type(1) == INVALID:
                     return DONE
                 return INVALIDATING
             else:
                 r = self._add_to_leaf_inner(toadd, leaf, node.get_pos(0), depth + 1)
                 if r == INVALIDATING:
                     if t == MIDDLE:
-                        make_invalid(leaf, rpos)
+                        node.make_invalid(0)
                         return INVALIDATING
                     return DONE
                 return r
         else:
-            t = get_type(leaf, rpos + 32)
+            t = node.get_type(1)
             if t == EMPTY:
                 node.set_hash(1, toadd)
                 return INVALIDATING
@@ -640,7 +644,7 @@ class MerkleSet:
                 oldval1 = node.get_hash(1)
                 if oldval1 == toadd:
                     return DONE
-                t0 = get_type(leaf, rpos)
+                t0 = node.get_type(0)
                 if t0 == TERMINAL:
                     oldval0 = node.get_hash(0)
                     if toadd == oldval0:
@@ -660,15 +664,15 @@ class MerkleSet:
                 if r == FULL:
                     return FULL
                 node.set_pos(1, newpos)
-                make_invalid(leaf, rpos + 32)
-                if get_type(leaf, rpos) == INVALID:
+                node.make_invalid(1)
+                if node.get_type(0) == INVALID:
                     return DONE
                 return INVALIDATING
             else:
                 r = self._add_to_leaf_inner(toadd, leaf, node.get_pos(1), depth + 1)
                 if r == INVALIDATING:
                     if t == MIDDLE:
-                        make_invalid(leaf, rpos + 32)
+                        node.make_invalid(1)
                         return INVALIDATING
                     return DONE
                 return r
