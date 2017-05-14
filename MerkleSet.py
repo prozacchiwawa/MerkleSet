@@ -1013,8 +1013,8 @@ class MerkleSet:
                 if r == ONELEFT:
                     t1 = get_type(block, rpos + 32)
                     assert t1 != EMPTY
-                    block[rpos:rpos + 32] = val
-                    block[rpos + 64:rpos + 66] = bytes(2)
+                    node.set_hash(0, val)
+                    node.set_pos(0, -1)
                     if t1 == TERMINAL:
                         return FRAGILE, None
                     if t != INVALID and t1 != INVALID:
@@ -1026,7 +1026,7 @@ class MerkleSet:
                     if t != INVALID:
                         make_invalid(block, rpos)
                     return FRAGILE, None
-                self._catch_leaf(block, from_bytes(block[rpos + 64:rpos + 66]) - 1)
+                self._catch_leaf(block, node.get_pos(0))
                 if t == INVALID:
                     return DONE, None
                 make_invalid(block, rpos)
@@ -1039,15 +1039,15 @@ class MerkleSet:
                 return DONE, None
             elif t == TERMINAL:
                 t0 = get_type(block, rpos)
-                if block[rpos + 32:rpos + 64] == toremove:
+                if node.get_hash(1) == toremove:
                     if t0 == TERMINAL:
-                        left = block[rpos:rpos + 32]
+                        left = node.get_hash(0)
                         self._deallocate_leaf_node(block, pos)
                         return ONELEFT, left
-                    block[rpos + 32:rpos + 64] = bytes(32)
+                    node.set_hash(1, bytes(32))
                     return FRAGILE, None
-                if block[rpos:rpos + 32] == toremove:
-                    left = block[rpos + 32:rpos + 64]
+                if node.get_hash(0) == toremove:
+                    left = node.get_hash(1)
                     self._deallocate_leaf_node(block, pos)
                     return ONELEFT, left
                 return DONE, None
