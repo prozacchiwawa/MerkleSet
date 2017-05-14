@@ -154,11 +154,12 @@ class Node:
             v += 1
         self.data[offset:offset+SHORTSIZE] = to_bytes(v, 2)
 
-def leaf_get_next_ptr(leaf):
-    return from_bytes(leaf[:2])
+class Leaf(safearray):
+    def get_next_ptr(self):
+        return from_bytes(self[:2])
 
-def leaf_set_next_ptr(leaf,ptr):
-    leaf[:2] = to_bytes(ptr, 2)
+    def set_next_ptr(self,ptr):
+        self[:2] = to_bytes(ptr, 2)
         
 class MerkleSet:
     # depth sets the size of branches, it's power of two scale with a smallest value of 0
@@ -278,7 +279,7 @@ class MerkleSet:
         mycopy = bytearray([88] * (4 + self.leaf_units * 68))
         for pos, expected in inputs:
             self._audit_whole_leaf_inner(leaf, mycopy, pos, expected)
-        i = leaf_get_next_ptr(leaf)
+        i = leaf.get_next_ptr()
         while i != 0xFFFF:
             nexti = from_bytes(leaf[4 + i * 68:4 + i * 68 + 2])
             assert mycopy[4 + i * 68:4 + i * 68 + 68] == b'X' * 68
@@ -327,7 +328,7 @@ class MerkleSet:
 
     # In C this should be malloc/new
     def _allocate_leaf(self):
-        leaf = safearray(4 + self.leaf_units * 68)
+        leaf = Leaf(4 + self.leaf_units * 68)
         for i in range(self.leaf_units):
             p = 4 + i * 68
             leaf[p:p + 2] = to_bytes((i + 1) if i != self.leaf_units - 1 else 0xFFFF, 2)
@@ -587,12 +588,12 @@ class MerkleSet:
                     oldval1 = node.get_hash(1)
                     if toadd == oldval1:
                         return DONE
-                    nextpos = leaf_get_next_ptr(leaf)
-                    leaf_set_next_ptr(leaf, pos)
+                    nextpos = leaf.get_next_ptr()
+                    leaf.set_next_ptr(pos)
                     node.make_unused(nextpos)
                     r, nextnextpos = self._insert_leaf([toadd, oldval0, oldval1], leaf, depth)
                     if r == FULL:
-                        leaf_set_next_ptr(leaf, nextpos)
+                        leaf.set_next_ptr(nextpos)
                         node.set_hash(0, oldval0)
                         node.set_hash(1, oldval1)
                         return FULL
@@ -628,12 +629,12 @@ class MerkleSet:
                     oldval0 = node.get_hash(0)
                     if toadd == oldval0:
                         return DONE
-                    nextpos = leaf_get_next_ptr(leaf)
-                    leaf_set_next_ptr(leaf, pos)
+                    nextpos = leaf.get_next_ptr()
+                    leaf.set_next_ptr(pos)
                     node.make_unused(nextpos)
                     r, nextnextpos = self._insert_leaf([toadd, oldval0, oldval1], leaf, depth)
                     if r == FULL:
-                        leaf_set_next_ptr(leaf, nextpos)
+                        leaf.set_next_ptr(nextpos)
                         node.set_hash(0, oldval0)
                         node.set_hash(1, oldval1)
                         return FULL
@@ -668,22 +669,22 @@ class MerkleSet:
     # returns state, newpos
     # state can be FULL, DONE
     def _copy_between_leafs_inner(self, fromleaf, toleaf, frompos):
-        topos = leaf_get_next_ptr(toleaf)
+        topos = toleaf.get_next_ptr()
         if topos == 0xFFFF:
             return FULL, None
         rfrompos = 4 + frompos * 68
         from_node = Node(fromleaf, rfrompos)
         rtopos = 4 + topos * 68
         to_node = Node(toleaf, rtopos)
-        leaf_set_next_ptr(toleaf, to_node.get_unused_ptr())
+        toleaf.set_next_ptr(to_node.get_unused_ptr())
         t0 = get_type(fromleaf, rfrompos)
         lowpos = None
         highpos = None
         if t0 == MIDDLE or t0 == INVALID:
             r, lowpos = self._copy_between_leafs_inner(fromleaf, toleaf, from_node.get_pos(0))
             if r == FULL:
-                assert leaf_get_next_ptr(toleaf) == to_node.get_unused_ptr()
-                leaf_set_next_ptr(toleaf, topos)
+                assert toleaf.get_next_ptr() == to_node.get_unused_ptr()
+                toleaf.set_next_ptr(topos)
                 return FULL, None
         t1 = get_type(fromleaf, rfrompos + 32)
         if t1 == MIDDLE or t1 == INVALID:
@@ -691,8 +692,8 @@ class MerkleSet:
             if r == FULL:
                 if t0 == MIDDLE or t0 == INVALID:
                     self._delete_from_leaf(toleaf, lowpos)
-                assert leaf_get_next_ptr(toleaf) == to_node.get_unused_ptr()
-                leaf_set_next_ptr(toleaf, topos)
+                assert toleaf.get_next_ptr() == to_node.get_unused_ptr()
+                toleaf.set_next_ptr(topos)
                 return FULL, None
         to_node.set_hash(0, from_node.get_hash(0))
         to_node.set_hash(1, from_node.get_hash(1))
@@ -712,8 +713,8 @@ class MerkleSet:
         t = get_type(leaf, rpos + 32)
         if t == MIDDLE or t == INVALID:
             self._delete_from_leaf(leaf, node.get_pos(1))
-        node.make_unused(leaf_get_next_ptr(leaf))
-        leaf_set_next_ptr(leaf, pos)
+        node.make_unused(leaf.get_next_ptr())
+        leaf.set_next_ptr(pos)
 
     def _copy_leaf_to_branch(self, branch, branchpos, moddepth, leaf, leafpos):
         assert leafpos >= 0
@@ -971,10 +972,10 @@ class MerkleSet:
         assert pos >= 0
         rpos = 4 + pos * 68
         node = Node(leaf, rpos)
-        next_entry = leaf_get_next_ptr(leaf)
+        next_entry = leaf.get_next_ptr()
         target_node = Node(leaf, rpos)
         target_node.make_unused(next_entry)
-        leaf_set_next_ptr(leaf, pos)
+        leaf.set_next_ptr(pos)
 
     # returns (status, oneval)
     # status can be ONELEFT, FRAGILE, INVALIDATING, DONE
@@ -1191,9 +1192,9 @@ class MerkleSet:
             r = self._collapse_leaf_inner(leaf, node.get_pos(0))
         if r is not None:
             # this leaf node is being collapsed, deallocate it
-            next_entry = leaf_get_next_ptr(leaf)
+            next_entry = leaf.get_next_ptr()
             node.make_unused(next_entry)
-            leaf_set_next_ptr(leaf, pos)
+            leaf.set_next_ptr(pos)
         return r
 
     # Convenience function
