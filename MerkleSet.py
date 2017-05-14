@@ -680,7 +680,7 @@ class MerkleSet:
         lowpos = None
         highpos = None
         if t0 == MIDDLE or t0 == INVALID:
-            r, lowpos = self._copy_between_leafs_inner(fromleaf, toleaf, from_bytes(fromleaf[rfrompos + 64:rfrompos + 66]) - 1)
+            r, lowpos = self._copy_between_leafs_inner(fromleaf, toleaf, from_node.get_pos(0))
             if r == FULL:
                 assert toleaf[:2] == toleaf[rtopos:rtopos + 2]
                 toleaf[:2] = to_bytes(topos, 2)
