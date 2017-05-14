@@ -691,14 +691,15 @@ class MerkleSet:
             if r == FULL:
                 if t0 == MIDDLE or t0 == INVALID:
                     self._delete_from_leaf(toleaf, lowpos)
-                assert toleaf[:2] == toleaf[rtopos:rtopos + 2]
-                toleaf[:2] = to_bytes(topos, 2)
+                assert leaf_get_next_ptr(toleaf) == to_node.get_unused_ptr()
+                leaf_set_next_ptr(toleaf, topos)
                 return FULL, None
-        toleaf[rtopos:rtopos + 64] = fromleaf[rfrompos:rfrompos + 64]
+        to_node.set_hash(0, from_node.get_hash(0))
+        to_node.set_hash(1, from_node.get_hash(1))
         if lowpos is not None:
-            toleaf[rtopos + 64:rtopos + 66] = to_bytes(lowpos + 1, 2)
+            to_node.set_pos(0, lowpos)
         if highpos is not None:
-            toleaf[rtopos + 66:rtopos + 68] = to_bytes(highpos + 1, 2)
+            to_node.set_pos(1, highpos)
         return DONE, topos
 
     def _delete_from_leaf(self, leaf, pos):
