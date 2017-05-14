@@ -128,7 +128,7 @@ class Node:
     def pos_loc(self,n):
         return self.pos + 64 + (n * SHORTSIZE)
 
-    def hash(self,n):
+    def get_hash(self,n):
         offset = self.hash_loc(n)
         return self.data[offset:offset+HASHSIZE]
 
@@ -136,13 +136,13 @@ class Node:
         offset = self.hash_loc(n)
         self.data[offset:offset+HASHSIZE] = v
 
-    def pos(self,n):
+    def get_pos(self,n):
         offset = self.pos_loc(n)
-        return from_bytes(self.data[offset:offset+SHORTSIZE])
+        return from_bytes(self.data[offset:offset+SHORTSIZE])-1
 
     def set_pos(self,n,v):
         offset = self.pos_loc(n)
-        self.data[offset:offset+SHORTSIZE] = to_bytes(v,2)
+        self.data[offset:offset+SHORTSIZE] = to_bytes(v+1,2)
         
 class MerkleSet:
     # depth sets the size of branches, it's power of two scale with a smallest value of 0
@@ -278,27 +278,30 @@ class MerkleSet:
         mycopy[rpos:rpos + 68] = leaf[rpos:rpos + 68]
         t0 = get_type(leaf, rpos)
         t1 = get_type(leaf, rpos + 32)
+
+        source_node = Node(leaf,rpos)
+
         if expected is not None:
-            assert t0 != INVALID and t1 != INVALID and hashaudit(leaf[rpos:rpos + 64]) == expected
+            assert t0 != INVALID and t1 != INVALID and hashaudit(source_node.get_hash(0) + source_node.get_hash(1)) == expected
         if t0 == EMPTY:
             assert t1 != EMPTY
             assert t1 != TERMINAL
-            assert leaf[rpos:rpos + 32] == BLANK
-            assert leaf[rpos + 64:rpos + 66] == bytes(2)
+            assert source_node.get_hash(0) == BLANK
+            assert source_node.get_pos(0) == -1
         elif t0 == TERMINAL:
             assert t1 != EMPTY
-            assert leaf[rpos + 64:rpos + 66] == bytes(2)
+            assert source_node.get_pos(0) == -1
         else:
-            e = (leaf[rpos:rpos + 32] if t0 == MIDDLE else None)
-            self._audit_whole_leaf_inner(leaf, mycopy, from_bytes(leaf[rpos + 64:rpos + 66]) - 1, e)
+            e = (source_node.get_hash(0) if t0 == MIDDLE else None)
+            self._audit_whole_leaf_inner(leaf, mycopy, source_node.get_pos(0), e)
         if t1 == EMPTY:
-            assert leaf[rpos + 32:rpos + 64] == BLANK
-            assert leaf[rpos + 66:rpos + 68] == bytes(2)
+            assert source_node.get_hash(1) == BLANK
+            assert source_node.get_pos(1) == -1
         elif t1 == TERMINAL:
-            assert leaf[rpos + 66:rpos + 68] == bytes(2)
+            assert source_node.get_pos(1) == -1
         else:
-            e = (leaf[rpos + 32:rpos + 64] if t1 == MIDDLE else None)
-            self._audit_whole_leaf_inner(leaf, mycopy, from_bytes(leaf[rpos + 66:rpos + 68]) - 1, e)
+            e = (source_node.get_hash(1) if t1 == MIDDLE else None)
+            self._audit_whole_leaf_inner(leaf, mycopy, source_node.get_pos(1), e)
 
     # In C this should be malloc/new
     def _allocate_branch(self):
