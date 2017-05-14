@@ -698,15 +698,15 @@ class MerkleSet:
     def _delete_from_leaf(self, leaf, pos):
         assert pos >= 0
         rpos = 4 + pos * 68
+        node = Node(leaf, rpos)
         t = get_type(leaf, rpos)
         if t == MIDDLE or t == INVALID:
-            self._delete_from_leaf(leaf, from_bytes(leaf[rpos + 64:rpos + 66]) - 1)
+            self._delete_from_leaf(leaf, node.get_pos(0))
         t = get_type(leaf, rpos + 32)
         if t == MIDDLE or t == INVALID:
-            self._delete_from_leaf(leaf, from_bytes(leaf[rpos + 66:rpos + 68]) - 1)
-        leaf[rpos + 2:rpos + 68] = bytes(66)
-        leaf[rpos:rpos + 2] = leaf[:2]
-        leaf[:2] = to_bytes(pos, 2)
+            self._delete_from_leaf(leaf, node.get_pos(1))
+        node.make_unused(leaf_get_next_ptr(leaf))
+        leaf_set_next_ptr(leaf, pos)
 
     def _copy_leaf_to_branch(self, branch, branchpos, moddepth, leaf, leafpos):
         assert leafpos >= 0
