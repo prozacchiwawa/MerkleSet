@@ -692,12 +692,10 @@ class MerkleSet:
         topos = toleaf.get_next_ptr()
         if topos == 0xFFFF:
             return FULL, None
-        rfrompos = 4 + frompos * 68
-        from_node = Node(fromleaf, rfrompos)
-        rtopos = 4 + topos * 68
-        to_node = Node(toleaf, rtopos)
+        from_node = fromleaf.get_node(frompos)
+        to_node = toleaf.get_node(topos)
         toleaf.set_next_ptr(to_node.get_unused_ptr())
-        t0 = get_type(fromleaf, rfrompos)
+        t0 = from_node.get_type(0)
         lowpos = None
         highpos = None
         if t0 == MIDDLE or t0 == INVALID:
@@ -706,9 +704,9 @@ class MerkleSet:
                 assert toleaf.get_next_ptr() == to_node.get_unused_ptr()
                 toleaf.set_next_ptr(topos)
                 return FULL, None
-        t1 = get_type(fromleaf, rfrompos + 32)
+        t1 = from_node.get_type(1)
         if t1 == MIDDLE or t1 == INVALID:
-            r, highpos = self._copy_between_leafs_inner(fromleaf, toleaf, from_bytes(fromleaf[rfrompos + 66:rfrompos + 68]) - 1)
+            r, highpos = self._copy_between_leafs_inner(fromleaf, toleaf, from_node.get_pos(1))
             if r == FULL:
                 if t0 == MIDDLE or t0 == INVALID:
                     self._delete_from_leaf(toleaf, lowpos)
