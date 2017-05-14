@@ -1052,7 +1052,7 @@ class MerkleSet:
                     return ONELEFT, left
                 return DONE, None
             else:
-                r, val = self._remove_leaf_inner(toremove, block, from_bytes(block[rpos + 66:rpos + 68]) - 1, depth + 1)
+                r, val = self._remove_leaf_inner(toremove, block, node.get_pos(1), depth + 1)
                 if r == DONE:
                     return DONE, None
                 if r == INVALIDATING:
@@ -1064,8 +1064,8 @@ class MerkleSet:
                 if r == ONELEFT:
                     t0 = get_type(block, rpos)
                     assert t0 != EMPTY
-                    block[rpos + 32:rpos + 64] = val
-                    block[rpos + 66:rpos + 68] = bytes(2)
+                    node.set_hash(1, val)
+                    node.set_pos(1, -1)
                     if t0 == TERMINAL:
                         return FRAGILE, None
                     if t != INVALID and t0 != INVALID:
@@ -1077,7 +1077,7 @@ class MerkleSet:
                     if t != INVALID:
                         make_invalid(block, rpos + 32)
                     return FRAGILE, None
-                self._catch_leaf(block, from_bytes(block[rpos + 66:rpos + 68]) - 1)
+                self._catch_leaf(block, node.get_pos(1))
                 if get_type(block, rpos + 32) == INVALID:
                     return DONE, None
                 make_invalid(block, rpos + 32)
@@ -1144,19 +1144,21 @@ class MerkleSet:
     def _catch_leaf(self, leaf, pos):
         assert pos >= 0
         rpos = 4 + pos * 68
+        node = Node(leaf, rpos)
         t0 = get_type(leaf, rpos)
         t1 = get_type(leaf, rpos + 32)
         if t0 == EMPTY:
-            r = self._collapse_leaf_inner(leaf, from_bytes(leaf[rpos + 66:rpos + 68]) - 1)
+            r = self._collapse_leaf_inner(leaf, node.get_pos(1))
             if r != None:
                 leaf[rpos + 66:rpos + 68] = bytes(2)
                 leaf[rpos:rpos + 64] = r
             return
         if t1 == EMPTY:
-            r = self._collapse_leaf_inner(leaf, from_bytes(leaf[rpos + 64:rpos + 66]) - 1)
+            r = self._collapse_leaf_inner(leaf, node.get_pos(0))
             if r != None:
-                leaf[rpos + 64:rpos + 66] = bytes(2)
-                leaf[rpos:rpos + 64] = r
+                node.set_pos(0, -1)
+                node.set_hash(0, r[:32])
+                node.set_hash(1, r[32:])
             return
 
     # returns two hashes string or None
