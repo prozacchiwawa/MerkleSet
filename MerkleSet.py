@@ -970,31 +970,33 @@ class MerkleSet:
     def _deallocate_leaf_node(self, leaf, pos):
         assert pos >= 0
         rpos = 4 + pos * 68
-        next_entry = from_bytes(leaf[:2])
+        node = Node(leaf, rpos)
+        next_entry = leaf_get_next_ptr(leaf)
         target_node = Node(leaf, rpos)
         target_node.make_unused(next_entry)
-        leaf[:2] = to_bytes(pos, 2)
+        leaf_set_next_ptr(leaf, pos)
 
     # returns (status, oneval)
     # status can be ONELEFT, FRAGILE, INVALIDATING, DONE
     def _remove_leaf_inner(self, toremove, block, pos, depth):
         assert pos >= 0
         rpos = 4 + pos * 68
+        node = Node(block, rpos)
         if get_bit(toremove, depth) == 0:
             t = get_type(block, rpos)
             if t == EMPTY:
                 return DONE, None
             if t == TERMINAL:
                 t1 = get_type(block, rpos + 32)
-                if block[rpos:rpos + 32] == toremove:
+                if node.get_hash(0) == toremove:
                     if t1 == TERMINAL:
-                        left = block[rpos + 32:rpos + 64]
+                        left = node.get_hash(1)
                         self._deallocate_leaf_node(block, pos)
                         return ONELEFT, left
-                    block[rpos:rpos + 32] = bytes(32)
+                    node.set_hash(0, bytes(32))
                     return FRAGILE, None
-                if block[rpos + 32:rpos + 64] == toremove:
-                    left = block[rpos:rpos + 32]
+                if node.get_hash(1) == toremove:
+                    left = node.get_hash(0)
                     self._deallocate_leaf_node(block, pos)
                     return ONELEFT, left
                 return DONE, None
