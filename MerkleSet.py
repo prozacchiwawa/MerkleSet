@@ -121,6 +121,10 @@ class Node:
     def make_unused(self,nextent):
         self.data[self.pos:self.pos + 2] = to_bytes(nextent,2)
         self.data[self.pos + 2:self.pos + 68] = bytes(66)
+
+    def get_unused_ptr(self):
+        assert self.data[self.pos+2:self.pos+68] == bytes(66) and from_bytes(self.data[self.pos:self.pos+2]) != 0
+        return from_bytes(self.data[self.pos:self.pos+2])
         
     def hash_loc(self,n):
         return self.pos + (n * HASHSIZE)
@@ -664,12 +668,14 @@ class MerkleSet:
     # returns state, newpos
     # state can be FULL, DONE
     def _copy_between_leafs_inner(self, fromleaf, toleaf, frompos):
-        topos = from_bytes(toleaf[:2])
+        topos = leaf_get_next_ptr(toleaf)
         if topos == 0xFFFF:
             return FULL, None
         rfrompos = 4 + frompos * 68
+        from_node = Node(fromleaf, rfrompos)
         rtopos = 4 + topos * 68
-        toleaf[0:2] = toleaf[rtopos:rtopos + 2]
+        to_node = Node(toleaf, rtopos)
+        leaf_set_next_ptr(toleaf, to_node.get_unused_ptr())
         t0 = get_type(fromleaf, rfrompos)
         lowpos = None
         highpos = None
