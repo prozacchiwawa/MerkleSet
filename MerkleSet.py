@@ -170,6 +170,12 @@ class Leaf(safearray):
     def get_node(self,pos):
         assert pos >= 0 and (4 + 68 * (pos + 1)) <= len(self)
         return Node(self, 4 + 68 * pos)
+
+    def get_inputs(self):
+        return from_bytes(self[2:4])
+
+    def set_inputs(self,i):
+        self[2:4] = to_bytes(i, 2)
         
 class MerkleSet:
     # depth sets the size of branches, it's power of two scale with a smallest value of 0
@@ -283,7 +289,7 @@ class MerkleSet:
     def _audit_whole_leaf(self, leaf, inputs):
         leaf = self._deref(leaf)
         assert len(leaf) == 4 + self.leaf_units * 68
-        assert len(inputs) == from_bytes(leaf[2:4])
+        assert len(inputs) == leaf.get_inputs()
         # 88 is the ASCII value for 'X'
         mycopy = bytearray([88] * (4 + self.leaf_units * 68))
         for pos, expected in inputs:
@@ -302,10 +308,11 @@ class MerkleSet:
         rpos = 4 + pos * 68
         assert mycopy[rpos:rpos + 68] == b'X' * 68
         mycopy[rpos:rpos + 68] = leaf[rpos:rpos + 68]
-        t0 = get_type(leaf, rpos)
-        t1 = get_type(leaf, rpos + 32)
 
         source_node = Node(leaf,rpos)
+
+        t0 = get_type(leaf, rpos)
+        t1 = get_type(leaf, rpos + 32)
 
         if expected is not None:
             assert t0 != INVALID and t1 != INVALID and hashaudit(source_node.get_hash(0) + source_node.get_hash(1)) == expected
@@ -519,7 +526,7 @@ class MerkleSet:
                     return
                 block[:8] = self._addrof(child)
             # increment the number of inputs in the active child
-            child[2:4] = to_bytes(from_bytes(child[2:4]) + 1, 2)
+            child.set_inputs(child.get_inputs() + 1)
             block[pos:pos + 8] = self._addrof(child)
             block[pos + 8:pos + 10] = to_bytes(leafpos, 2)
             return
@@ -551,7 +558,7 @@ class MerkleSet:
         r = self._add_to_leaf_inner(toadd, leaf, leafpos, depth)
         if r != FULL:
             return r
-        if from_bytes(leaf[2:4]) == 1:
+        if leaf.get_inputs() == 1:
             # leaf is full and only has one input
             # it cannot be split so it must be replaced with a branch
             newb = self._allocate_branch()
@@ -671,8 +678,8 @@ class MerkleSet:
     def _copy_between_leafs(self, fromleaf, toleaf, frompos):
         r, pos = self._copy_between_leafs_inner(fromleaf, toleaf, frompos)
         if r == DONE:
-            toleaf[2:4] = to_bytes(from_bytes(toleaf[2:4]) + 1, 2)
-            fromleaf[2:4] = to_bytes(from_bytes(fromleaf[2:4]) - 1, 2)
+            toleaf.set_inputs(toleaf.get_inputs() + 1)
+            fromleaf.set_inputs(fromleaf.get_inputs() - 1)
         return r, pos
 
     # returns state, newpos
@@ -735,7 +742,7 @@ class MerkleSet:
                 branch[0:8] = self._addrof(active)
             r, newpos = self._copy_between_leafs_inner(leaf, active, leafpos)
             assert r == DONE
-            active[2:4] = to_bytes(from_bytes(active[2:4]) + 1, 2)
+            active.set_inputs(active.get_inputs() + 1)
             branch[branchpos:branchpos + 8] = self._addrof(active)
             branch[branchpos + 8:branchpos + 10] = to_bytes(newpos, 2)
             return
@@ -968,13 +975,13 @@ class MerkleSet:
     def _remove_leaf(self, toremove, block, pos, depth, branch):
         result, val = self._remove_leaf_inner(toremove, block, pos, depth)
         if result == ONELEFT:
-            numin = from_bytes(block[2:4])
+            numin = block.get_inputs()
             if numin == 1:
                 if branch[:8] == self._addrof(block):
                     branch[:8] = bytes(8)
                 self._deallocate(block)
             else:
-                block[2:4] = to_bytes(numin - 1, 2)
+                block.set_inputs(numin - 1)
         return result, val
 
     def _deallocate_leaf_node(self, leaf, pos):
@@ -1176,13 +1183,13 @@ class MerkleSet:
         assert pos >= 0
         r = self._collapse_leaf_inner(leaf, pos)
         if r != None:
-            inputs = from_bytes(leaf[2:4])
+            inputs = leaf.get_inputs()
             if inputs == 1:
                 if branch[:8] == self._addrof(leaf):
                     branch[:8] = bytes(8)
                 self._deallocate(leaf)
                 return r
-            leaf[2:4] = to_bytes(inputs - 1, 2)
+            leaf.set_inputs(inputs - 1)
         return r
 
     # returns two hashes string or None
