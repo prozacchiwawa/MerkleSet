@@ -1179,21 +1179,21 @@ class MerkleSet:
     def _collapse_leaf_inner(self, leaf, pos):
         assert pos >= 0
         rpos = 4 + pos * 68
+        node = Node(leaf, rpos)
         t0 = get_type(leaf, rpos)
         t1 = get_type(leaf, rpos + 32)
         r = None
         if t0 == TERMINAL and t1 == TERMINAL:
-            r = leaf[rpos:rpos + 64]
+            r = node.get_hash(0) + node.get_hash(1)
         elif t0 == EMPTY:
-            r = self._collapse_leaf_inner(leaf, from_bytes(leaf[rpos + 66:rpos + 68]) - 1)
+            r = self._collapse_leaf_inner(leaf, node.get_pos(1))
         elif t1 == EMPTY:
-            r = self._collapse_leaf_inner(leaf, from_bytes(leaf[rpos + 64:rpos + 66]) - 1)
+            r = self._collapse_leaf_inner(leaf, node.get_pos(0))
         if r is not None:
             # this leaf node is being collapsed, deallocate it
-            next_entry = from_bytes(leaf[:2])
-            target_node = Node(leaf, rpos)
-            target_node.make_unused(next_entry)
-            leaf[:2] = to_bytes(pos, 2)
+            next_entry = leaf_get_next_ptr(leaf)
+            node.make_unused(next_entry)
+            leaf_set_next_ptr(leaf, pos)
         return r
 
     # Convenience function
@@ -1250,27 +1250,28 @@ class MerkleSet:
     def _is_included_leaf(self, tocheck, block, pos, depth, buf):
         assert pos >= 0
         pos = 4 + pos * 68
+        node = Node(block, pos)
         buf.append(bytes([MIDDLE]))
-        if block[pos:pos + 32] == tocheck or block[pos + 32:pos + 64] == tocheck:
-            _finish_proof(block[pos:pos + 64], depth, buf)
+        if node.get_hash(0) == tocheck or node.get_hash(1) == tocheck:
+            _finish_proof(node.get_hash(0) + node.get_hash(1), depth, buf)
             return True
         if get_bit(tocheck, depth) == 0:
             t = get_type(block, pos)
             if t == EMPTY or t == TERMINAL:
-                _finish_proof(block[pos:pos + 64], depth, buf)
+                _finish_proof(node.get_hash(0) + node.get_hash(1), depth, buf)
                 return False
             assert t == MIDDLE
-            r = self._is_included_leaf(tocheck, block, from_bytes(block[pos + 64:pos + 66]) - 1, depth + 1, buf)
-            buf.append(_quick_summary(block[pos + 32:pos + 64]))
+            r = self._is_included_leaf(tocheck, block, node.get_pos(0), depth + 1, buf)
+            buf.append(_quick_summary(node.get_hash(1)))
             return r
         else:
             t = get_type(block, pos + 32)
             if t == EMPTY or t == TERMINAL:
-                _finish_proof(block[pos:pos + 64], depth, buf)
+                _finish_proof(node.get_hash(0) + node.get_hash(1), depth, buf)
                 return False
             assert t == MIDDLE
-            buf.append(_quick_summary(block[pos:pos + 32]))
-            return self._is_included_leaf(tocheck, block, from_bytes(block[pos + 66:pos + 68]) - 1, depth + 1, buf)
+            buf.append(_quick_summary(node.get_hash(0)))
+            return self._is_included_leaf(tocheck, block, node.get_pos(1), depth + 1, buf)
 
 def _finish_proof(val, depth, buf):
     v0 = val[:32]
