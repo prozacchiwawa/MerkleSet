@@ -356,10 +356,11 @@ class MerkleSet:
 
     def _force_calculation_leaf(self, block, pos):
         pos = 4 + pos * 68
+        node = Node(block, pos)
         if get_type(block, pos) == INVALID:
-            block[pos:pos + 32] = self._force_calculation_leaf(block, from_bytes(block[pos + 64:pos + 66]) - 1)
+            block[pos:pos + 32] = self._force_calculation_leaf(block, node.get_pos(0))
         if get_type(block, pos + 32) == INVALID:
-            block[pos + 32:pos + 64] = self._force_calculation_leaf(block, from_bytes(block[pos + 66:pos + 68]) - 1)
+            block[pos + 32:pos + 64] = self._force_calculation_leaf(block, node.get_pos(1))
         return hashaudit(block[pos:pos + 64])
 
     # Convenience function
