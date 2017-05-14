@@ -64,6 +64,9 @@ INVALIDATING = 5
 DONE = 6
 FULL = 7
 
+HASHSIZE = 32
+SHORTSIZE = 2
+        
 def from_bytes(f):
     return int.from_bytes(f, 'big')
 
@@ -109,6 +112,37 @@ class safearray(bytearray):
             assert index >= 0
             assert index < len(self)
         bytearray.__setitem__(self, index, thing)
+
+class Node:
+    def __init__(self,data,pos):
+        self.data = data
+        self.pos = pos
+
+    def make_unused(self,nextent):
+        self.data[self.pos:self.pos + 2] = to_bytes(nextent,2)
+        self.data[self.pos + 2:self.pos + 68] = bytes(66)
+        
+    def hash_loc(self,n):
+        return self.pos + (n * HASHSIZE)
+
+    def pos_loc(self,n):
+        return self.pos + 64 + (n * SHORTSIZE)
+
+    def hash(self,n):
+        offset = self.hash_loc(n)
+        return self.data[offset:offset+HASHSIZE]
+
+    def set_hash(self,n,v):
+        offset = self.hash_loc(n)
+        self.data[offset:offset+HASHSIZE] = v
+
+    def pos(self,n):
+        offset = self.pos_loc(n)
+        return from_bytes(self.data[offset:offset+SHORTSIZE])
+
+    def set_pos(self,n,v):
+        offset = self.pos_loc(n)
+        self.data[offset:offset+SHORTSIZE] = to_bytes(v,2)
         
 class MerkleSet:
     # depth sets the size of branches, it's power of two scale with a smallest value of 0
@@ -914,9 +948,9 @@ class MerkleSet:
     def _deallocate_leaf_node(self, leaf, pos):
         assert pos >= 0
         rpos = 4 + pos * 68
-        next = leaf[:2]
-        leaf[rpos:rpos + 2] = leaf[:2]
-        leaf[rpos + 2:rpos + 68] = bytes(66)
+        next_entry = from_bytes(leaf[:2])
+        target_node = Node(leaf, rpos)
+        target_node.make_unused(next_entry)
         leaf[:2] = to_bytes(pos, 2)
 
     # returns (status, oneval)
@@ -1130,8 +1164,9 @@ class MerkleSet:
             r = self._collapse_leaf_inner(leaf, from_bytes(leaf[rpos + 64:rpos + 66]) - 1)
         if r is not None:
             # this leaf node is being collapsed, deallocate it
-            leaf[rpos + 2:rpos + 68] = bytes(66)
-            leaf[rpos:rpos + 2] = leaf[:2]
+            next_entry = from_bytes(leaf[:2])
+            target_node = Node(leaf, rpos)
+            target_node.make_unused(next_entry)
             leaf[:2] = to_bytes(pos, 2)
         return r
 
