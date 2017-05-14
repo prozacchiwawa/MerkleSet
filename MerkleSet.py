@@ -138,11 +138,23 @@ class Node:
 
     def get_pos(self,n):
         offset = self.pos_loc(n)
-        return from_bytes(self.data[offset:offset+SHORTSIZE])-1
+        res = from_bytes(self.data[offset:offset+SHORTSIZE])
+        if res != 0xffff:
+            return res - 1
+        else:
+            return res
 
     def set_pos(self,n,v):
         offset = self.pos_loc(n)
-        self.data[offset:offset+SHORTSIZE] = to_bytes(v+1,2)
+        if v != 0xffff:
+            v += 1
+        self.data[offset:offset+SHORTSIZE] = to_bytes(v, 2)
+
+def leaf_get_next_ptr(leaf):
+    return from_bytes(leaf[:2])
+
+def leaf_set_next_ptr(leaf,ptr):
+    leaf[:2] = to_bytes(ptr, 2)
         
 class MerkleSet:
     # depth sets the size of branches, it's power of two scale with a smallest value of 0
@@ -262,7 +274,7 @@ class MerkleSet:
         mycopy = bytearray([88] * (4 + self.leaf_units * 68))
         for pos, expected in inputs:
             self._audit_whole_leaf_inner(leaf, mycopy, pos, expected)
-        i = from_bytes(leaf[:2])
+        i = leaf_get_next_ptr(leaf)
         while i != 0xFFFF:
             nexti = from_bytes(leaf[4 + i * 68:4 + i * 68 + 2])
             assert mycopy[4 + i * 68:4 + i * 68 + 68] == b'X' * 68
@@ -556,42 +568,42 @@ class MerkleSet:
     def _add_to_leaf_inner(self, toadd, leaf, pos, depth):
         assert pos >= 0
         rpos = pos * 68 + 4
+        node = Node(leaf, rpos)
         if get_bit(toadd, depth) == 0:
             t = get_type(leaf, rpos)
             if t == EMPTY:
-                leaf[rpos:rpos + 32] = toadd
+                node.set_hash(0, toadd)
                 return INVALIDATING
             elif t == TERMINAL:
-                oldval0 = leaf[rpos:rpos + 32]
+                oldval0 = node.get_hash(0)
                 if oldval0 == toadd:
                     return DONE
                 t1 = get_type(leaf, rpos + 32)
                 if t1 == TERMINAL:
-                    oldval1 = leaf[rpos + 32:rpos + 64]
+                    oldval1 = node.get_hash(1)
                     if toadd == oldval1:
                         return DONE
-                    nextpos = from_bytes(leaf[:2])
-                    leaf[:2] = to_bytes(pos, 2)
-                    leaf[rpos:rpos + 64] = bytes(64)
-                    leaf[rpos:rpos + 2] = to_bytes(nextpos, 2)
+                    nextpos = leaf_get_next_ptr(leaf)
+                    leaf_set_next_ptr(leaf, pos)
+                    node.make_unused(nextpos)
                     r, nextnextpos = self._insert_leaf([toadd, oldval0, oldval1], leaf, depth)
                     if r == FULL:
-                        leaf[:2] = to_bytes(nextpos, 2)
-                        leaf[rpos:rpos + 32] = oldval0
-                        leaf[rpos + 32:rpos + 64] = oldval1
+                        leaf_set_next_ptr(leaf, nextpos)
+                        node.set_hash(0, oldval0)
+                        node.set_hash(1, oldval1)
                         return FULL
                     assert nextnextpos == pos
                     return INVALIDATING
                 r, newpos = self._insert_leaf([toadd, oldval0], leaf, depth + 1)
                 if r == FULL:
                     return FULL
-                leaf[rpos + 64:rpos + 66] = to_bytes(newpos + 1, 2)
+                node.set_pos(0, newpos)
                 make_invalid(leaf, rpos)
                 if get_type(leaf, rpos + 32) == INVALID:
                     return DONE
                 return INVALIDATING
             else:
-                r = self._add_to_leaf_inner(toadd, leaf, from_bytes(leaf[rpos + 64:rpos + 66]) - 1, depth + 1)
+                r = self._add_to_leaf_inner(toadd, leaf, node.get_pos(0), depth + 1)
                 if r == INVALIDATING:
                     if t == MIDDLE:
                         make_invalid(leaf, rpos)
@@ -601,39 +613,38 @@ class MerkleSet:
         else:
             t = get_type(leaf, rpos + 32)
             if t == EMPTY:
-                leaf[rpos + 32:rpos + 64] = toadd
+                node.set_hash(1, toadd)
                 return INVALIDATING
             elif t == TERMINAL:
-                oldval1 = leaf[rpos + 32:rpos + 64]
+                oldval1 = node.get_hash(1)
                 if oldval1 == toadd:
                     return DONE
                 t0 = get_type(leaf, rpos)
                 if t0 == TERMINAL:
-                    oldval0 = leaf[rpos:rpos + 32]
+                    oldval0 = node.get_hash(0)
                     if toadd == oldval0:
                         return DONE
-                    nextpos = from_bytes(leaf[:2])
-                    leaf[:2] = to_bytes(pos, 2)
-                    leaf[rpos:rpos + 64] = bytes(64)
-                    leaf[rpos:rpos + 2] = to_bytes(nextpos, 2)
+                    nextpos = leaf_get_next_ptr(leaf)
+                    leaf_set_next_ptr(leaf, pos)
+                    node.make_unused(nextpos)
                     r, nextnextpos = self._insert_leaf([toadd, oldval0, oldval1], leaf, depth)
                     if r == FULL:
-                        leaf[:2] = to_bytes(nextpos, 2)
-                        leaf[rpos:rpos + 32] = oldval0
-                        leaf[rpos + 32:rpos + 64] = oldval1
+                        leaf_set_next_ptr(leaf, nextpos)
+                        node.set_hash(0, oldval0)
+                        node.set_hash(1, oldval1)
                         return FULL
                     assert nextnextpos == pos
                     return INVALIDATING
                 r, newpos = self._insert_leaf([toadd, oldval1], leaf, depth + 1)
                 if r == FULL:
                     return FULL
-                leaf[rpos + 66:rpos + 68] = to_bytes(newpos + 1, 2)
+                node.set_pos(1, newpos)
                 make_invalid(leaf, rpos + 32)
                 if get_type(leaf, rpos) == INVALID:
                     return DONE
                 return INVALIDATING
             else:
-                r = self._add_to_leaf_inner(toadd, leaf, from_bytes(leaf[rpos + 66:rpos + 68]) - 1, depth + 1)
+                r = self._add_to_leaf_inner(toadd, leaf, node.get_pos(1), depth + 1)
                 if r == INVALIDATING:
                     if t == MIDDLE:
                         make_invalid(leaf, rpos + 32)
