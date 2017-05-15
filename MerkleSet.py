@@ -736,7 +736,7 @@ class MerkleSet:
 
     def _copy_leaf_to_branch(self, branch, branchpos, moddepth, leaf, leafpos):
         assert leafpos >= 0
-        rleafpos = 4 + leafpos * 68
+        node = leaf.get_node(leafpos)
         if moddepth == 0:
             active = self._deref(branch[:8])
             if active is None:
@@ -748,13 +748,13 @@ class MerkleSet:
             branch[branchpos:branchpos + 8] = self._addrof(active)
             branch[branchpos + 8:branchpos + 10] = to_bytes(newpos, 2)
             return
-        branch[branchpos:branchpos + 64] = leaf[rleafpos:rleafpos + 64]
-        t = get_type(leaf, rleafpos)
+        branch[branchpos:branchpos + 64] = node.get_hash(0) + node.get_hash(1)
+        t = node.get_type(0)
         if t == MIDDLE or t == INVALID:
-            self._copy_leaf_to_branch(branch, branchpos + 64, moddepth - 1, leaf, from_bytes(leaf[rleafpos + 64:rleafpos + 66]) - 1)
-        t = get_type(leaf, rleafpos + 32)
+            self._copy_leaf_to_branch(branch, branchpos + 64, moddepth - 1, leaf, node.get_pos(0))
+        t = node.get_type(1)
         if t == MIDDLE or t == INVALID:
-            self._copy_leaf_to_branch(branch, branchpos + 64 + self.subblock_lengths[moddepth - 1], moddepth - 1, leaf, from_bytes(leaf[rleafpos + 66:rleafpos + 68]) - 1)
+            self._copy_leaf_to_branch(branch, branchpos + 64 + self.subblock_lengths[moddepth - 1], moddepth - 1, leaf, node.get_pos(1))
 
     # returns (status, pos)
     # status can be INVALIDATING, FULL
