@@ -125,8 +125,14 @@ class Node:
         self.data[self.pos:self.pos + 2] = to_bytes(nextent,2)
         self.data[self.pos + 2:self.pos + 68] = bytes(66)
 
+    def make_unused_unsafe(self,nextent):
+        self.data[self.pos:self.pos + 2] = to_bytes(nextent,2)
+
     def get_unused_ptr(self):
         assert self.data[self.pos+2:self.pos+68] == bytes(66) and from_bytes(self.data[self.pos:self.pos+2]) != 0
+        return from_bytes(self.data[self.pos:self.pos+2])
+
+    def get_unused_ptr_unsafe(self):
         return from_bytes(self.data[self.pos:self.pos+2])
         
     def hash_loc(self,n):
@@ -181,7 +187,10 @@ class Leaf(safearray):
 
     def set_inputs(self,i):
         self[2:4] = to_bytes(i, 2)        
-        
+
+    def get_hash(self,n):
+        return self[n * HASHSIZE:(n+1) * HASHSIZE]
+
 class MerkleSet:
     # depth sets the size of branches, it's power of two scale with a smallest value of 0
     # leaf_units is the size of leaves, its smallest possible value is 1
@@ -767,11 +776,11 @@ class MerkleSet:
             return FULL, None
         lpos = pos * 68 + 4
         node = leaf.get_node(pos)
-        leaf.set_next_ptr(from_bytes(leaf[lpos:lpos + 2]))
+        leaf.set_next_ptr(node.get_unused_ptr_unsafe())
         things.sort()
         if len(things) == 2:
-            leaf[lpos:lpos + 32] = things[0]
-            leaf[lpos + 32:lpos + 64] = things[1]
+            node.set_hash(0, things[0])
+            node.set_hash(1, things[1])
             return INVALIDATING, pos
         bits = [get_bit(thing, depth) for thing in things]
         if bits[0] == bits[1] == bits[2]:
@@ -780,29 +789,29 @@ class MerkleSet:
                 leaf.set_next_ptr(pos)
                 return FULL, None
             if bits[0] == 0:
-                leaf[lpos + 64:lpos + 66] = to_bytes(laterpos + 1, 2)
-                make_invalid(leaf, lpos)
+                node.set_pos(0, laterpos)
+                node.make_invalid(0)
             else:
-                leaf[lpos + 66:lpos + 68] = to_bytes(laterpos + 1, 2)
-                make_invalid(leaf, lpos + 32)
-                leaf[lpos:lpos + 2] = bytes(2)
+                node.set_pos(1, laterpos)
+                node.make_invalid(1)
+                node.make_unused_unsafe(0)
             return INVALIDATING, pos
         elif bits[0] == bits[1]:
             r, laterpos = self._insert_leaf([things[0], things[1]], leaf, depth + 1)
             if r == FULL:
                 leaf.set_next_ptr(pos)
                 return FULL, None
-            leaf[lpos + 32:lpos + 64] = things[2]
-            leaf[lpos + 64:lpos + 66] = to_bytes(laterpos + 1, 2)
-            make_invalid(leaf, lpos)
+            node.set_hash(1, things[2])
+            node.set_pos(0, laterpos)
+            node.make_invalid(0)
         else:
             r, laterpos = self._insert_leaf([things[1], things[2]], leaf, depth + 1)
             if r == FULL:
                 leaf.set_next_ptr(pos)
                 return FULL, None
-            leaf[lpos:lpos + 32] = things[0]
-            leaf[lpos + 66:lpos + 68] = to_bytes(laterpos + 1, 2)
-            make_invalid(leaf, lpos + 32)
+            node.set_hash(0, things[0])
+            node.set_pos(1, laterpos)
+            node.make_invalid(1)
         return INVALIDATING, pos
 
     # Convenience function
