@@ -762,11 +762,12 @@ class MerkleSet:
         assert 2 <= len(things) <= 3
         for thing in things:
             assert len(thing) == 32
-        pos = from_bytes(leaf[:2])
+        pos = leaf.get_next_ptr()
         if pos == 0xFFFF:
             return FULL, None
         lpos = pos * 68 + 4
-        leaf[:2] = leaf[lpos:lpos + 2]
+        node = leaf.get_node(pos)
+        leaf.set_next_ptr(from_bytes(leaf[lpos:lpos + 2]))
         things.sort()
         if len(things) == 2:
             leaf[lpos:lpos + 32] = things[0]
@@ -776,7 +777,7 @@ class MerkleSet:
         if bits[0] == bits[1] == bits[2]:
             r, laterpos = self._insert_leaf(things, leaf, depth + 1)
             if r == FULL:
-                leaf[:2] = to_bytes(pos, 2)
+                leaf.set_next_ptr(pos)
                 return FULL, None
             if bits[0] == 0:
                 leaf[lpos + 64:lpos + 66] = to_bytes(laterpos + 1, 2)
@@ -789,7 +790,7 @@ class MerkleSet:
         elif bits[0] == bits[1]:
             r, laterpos = self._insert_leaf([things[0], things[1]], leaf, depth + 1)
             if r == FULL:
-                leaf[:2] = to_bytes(pos, 2)
+                leaf.set_next_ptr(pos)
                 return FULL, None
             leaf[lpos + 32:lpos + 64] = things[2]
             leaf[lpos + 64:lpos + 66] = to_bytes(laterpos + 1, 2)
@@ -797,7 +798,7 @@ class MerkleSet:
         else:
             r, laterpos = self._insert_leaf([things[1], things[2]], leaf, depth + 1)
             if r == FULL:
-                leaf[:2] = to_bytes(pos, 2)
+                leaf.set_next_ptr(pos)
                 return FULL, None
             leaf[lpos:lpos + 32] = things[0]
             leaf[lpos + 66:lpos + 68] = to_bytes(laterpos + 1, 2)
