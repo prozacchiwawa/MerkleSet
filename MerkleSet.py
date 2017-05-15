@@ -774,7 +774,6 @@ class MerkleSet:
         pos = leaf.get_next_ptr()
         if pos == 0xFFFF:
             return FULL, None
-        lpos = pos * 68 + 4
         node = leaf.get_node(pos)
         leaf.set_next_ptr(node.get_unused_ptr_unsafe())
         things.sort()
@@ -1009,14 +1008,13 @@ class MerkleSet:
     # status can be ONELEFT, FRAGILE, INVALIDATING, DONE
     def _remove_leaf_inner(self, toremove, block, pos, depth):
         assert pos >= 0
-        rpos = 4 + pos * 68
-        node = Node(block, rpos)
+        node = block.get_node(pos)
         if get_bit(toremove, depth) == 0:
-            t = get_type(block, rpos)
+            t = node.get_type(0)
             if t == EMPTY:
                 return DONE, None
             if t == TERMINAL:
-                t1 = get_type(block, rpos + 32)
+                t1 = node.get_type(1)
                 if node.get_hash(0) == toremove:
                     if t1 == TERMINAL:
                         left = node.get_hash(1)
@@ -1030,17 +1028,17 @@ class MerkleSet:
                     return ONELEFT, left
                 return DONE, None
             else:
-                r, val = self._remove_leaf_inner(toremove, block, from_bytes(block[rpos + 64:rpos + 66]) - 1, depth + 1)
+                r, val = self._remove_leaf_inner(toremove, block, node.get_pos(0), depth + 1)
                 if r == DONE:
                     return DONE, None
                 if r == INVALIDATING:
                     if t == MIDDLE:
-                        make_invalid(block, rpos)
-                        if get_type(block, rpos + 32) != INVALID:
+                        node.make_invalid(0)
+                        if node.get_type(1) != INVALID:
                             return INVALIDATING, None
                     return DONE, None
                 if r == ONELEFT:
-                    t1 = get_type(block, rpos + 32)
+                    t1 = node.get_type(1)
                     assert t1 != EMPTY
                     node.set_hash(0, val)
                     node.set_pos(0, -1)
@@ -1050,24 +1048,24 @@ class MerkleSet:
                         return INVALIDATING, None
                     return DONE, None
                 assert r == FRAGILE
-                t1 = get_type(block, rpos + 32)
+                t1 = node.get_type(1)
                 if t1 == EMPTY:
                     if t != INVALID:
-                        make_invalid(block, rpos)
+                        node.make_invalid(0)
                     return FRAGILE, None
                 self._catch_leaf(block, node.get_pos(0))
                 if t == INVALID:
                     return DONE, None
-                make_invalid(block, rpos)
+                node.make_invalid(0)
                 if t1 == INVALID:
                     return DONE, None
                 return INVALIDATING, None
         else:
-            t = get_type(block, rpos + 32)
+            t = node.get_type(1)
             if t == EMPTY:
                 return DONE, None
             elif t == TERMINAL:
-                t0 = get_type(block, rpos)
+                t0 = node.get_type(0)
                 if node.get_hash(1) == toremove:
                     if t0 == TERMINAL:
                         left = node.get_hash(0)
@@ -1086,12 +1084,12 @@ class MerkleSet:
                     return DONE, None
                 if r == INVALIDATING:
                     if t == MIDDLE:
-                        make_invalid(block, rpos + 32)
-                        if get_type(block, rpos) != INVALID:
+                        node.make_invalid(1)
+                        if node.get_type(0) != INVALID:
                             return INVALIDATING, None
                     return DONE, None
                 if r == ONELEFT:
-                    t0 = get_type(block, rpos)
+                    t0 = node.get_type(0)
                     assert t0 != EMPTY
                     node.set_hash(1, val)
                     node.set_pos(1, -1)
@@ -1101,15 +1099,15 @@ class MerkleSet:
                         return INVALIDATING, None
                     return DONE, None
                 assert r == FRAGILE
-                t0 = get_type(block, rpos)
+                t0 = node.get_type(0)
                 if t0 == EMPTY:
                     if t != INVALID:
-                        make_invalid(block, rpos + 32)
+                        node.make_invalid(1)
                     return FRAGILE, None
                 self._catch_leaf(block, node.get_pos(1))
-                if get_type(block, rpos + 32) == INVALID:
+                if node.get_type(1) == INVALID:
                     return DONE, None
-                make_invalid(block, rpos + 32)
+                node.make_invalid(1)
                 if t0 == INVALID:
                     return DONE, None
                 return INVALIDATING, None
